@@ -23,8 +23,9 @@ class BasicTests(unittest.TestCase):
         self.assertGreater(car.read(300)["coolant_temp_c"], 70)
 
     def test_fault_causes_misfires_healthy_does_not(self):
-        faulty = sum(SimulatedCar(fault=True).read(t / 10)["misfire_cyl3"] for t in range(600))
-        healthy = sum(SimulatedCar(fault=False).read(t / 10)["misfire_cyl3"] for t in range(600))
+        faulty_car, healthy_car = SimulatedCar(fault=True), SimulatedCar(fault=False)
+        faulty = sum(faulty_car.read(t / 10)["misfire_cyl3"] for t in range(600))
+        healthy = sum(healthy_car.read(t / 10)["misfire_cyl3"] for t in range(600))
         self.assertGreater(faulty, 0)
         self.assertEqual(healthy, 0)
 

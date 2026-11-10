@@ -5,7 +5,8 @@ napr. "010C" (= mód 01, PID 0C = otáčky). On sa spýta auta a vráti odpoveď
 v šestnástkovej sústave, napr. "410C1AF8" -> 0x1AF8 / 4 = 1726 ot/min.
 
 BEZPEČNOSŤ: komunikácia je LEN NA ČÍTANIE. Metóda `_send` pustí do kábla iba
-príkazy zo zoznamu povolených (nastavenie kábla + mód 01 = živé dáta).
+príkazy zo zoznamu povolených: nastavenie kábla, mód 01 (živé dáta),
+mód 03 (uložené chyby) a mód 07 (čakajúce chyby) - všetko len čítanie.
 Napr. mód 04 (mazanie chýb) sa poslať nedá.
 """
 import re
@@ -30,7 +31,7 @@ ALLOWED_AT = {
     "ATDP",   # názov zisteného protokolu
     "ATRV",   # napätie na OBD zásuvke (meria kábel sám, auto sa nepýta)
 }
-READ_ONLY = re.compile(r"^01[0-9A-F]{2}$")   # mód 01 = aktuálne dáta
+READ_ONLY = re.compile(r"^(01[0-9A-F]{2}|03|07)$")   # živé dáta, čítanie chýb
 
 
 class ObdError(Exception):
@@ -43,6 +44,11 @@ class Pid:
     name: str
     decode: Callable[[bytes], float]
     slow: bool = False   # pomaly sa meniace veličiny čítame zriedkavejšie
+
+
+def _closed_loop(d: bytes) -> float:
+    """Stav palivového systému: 2 = reguluje podľa lambda sondy, 16 = reguluje, ale s chybou."""
+    return 1.0 if d[0] & 0b10010 else 0.0
 
 
 def _trim(d: bytes) -> float:
@@ -60,12 +66,56 @@ PIDS = [
     Pid(0x0E, "timing_adv_deg", lambda d: d[0] / 2 - 64),
     Pid(0x14, "o2_b1s1_v", lambda d: d[0] / 200),
     Pid(0x18, "o2_b2s1_v", lambda d: d[0] / 200),
+    Pid(0x15, "o2_b1s2_v", lambda d: d[0] / 200),   # sonda za katalyzátorom
+    Pid(0x19, "o2_b2s2_v", lambda d: d[0] / 200),
     Pid(0x11, "throttle_pct", lambda d: round(d[0] * 100 / 255, 1)),
     Pid(0x05, "coolant_temp_c", lambda d: float(d[0] - 40), slow=True),
     Pid(0x0F, "intake_temp_c", lambda d: float(d[0] - 40), slow=True),
     Pid(0x07, "ltft_pct", _trim, slow=True),      # dlhodobý trim, banka 1
     Pid(0x09, "ltft_b2_pct", _trim, slow=True),   # dlhodobý trim, banka 2
+    Pid(0x03, "closed_loop", _closed_loop, slow=True),
+    Pid(0x1F, "run_time_s", lambda d: float(d[0] * 256 + d[1]), slow=True),
 ]
+
+# Chybové kódy, ktoré súvisia s trasením (na E46/M54 časté)
+DTC_INFO = {
+    "P0171": "Chudobná zmes – banka 1 (falošný vzduch, MAF, tlak paliva)",
+    "P0172": "Bohatá zmes – banka 1",
+    "P0174": "Chudobná zmes – banka 2 (falošný vzduch, MAF, tlak paliva)",
+    "P0175": "Bohatá zmes – banka 2",
+    "P0300": "Náhodné výpadky zapaľovania",
+    **{f"P030{i}": f"Výpadky zapaľovania – valec {i}" for i in range(1, 7)},
+    "P0115": "Snímač teploty chladiva – porucha obvodu",
+    "P0116": "Snímač teploty chladiva – nepravdepodobná hodnota",
+    "P0117": "Snímač teploty chladiva – nízky signál",
+    "P0118": "Snímač teploty chladiva – vysoký signál",
+    "P0128": "Motor sa nezahrieva (termostat)",
+    "P0110": "Snímač teploty nasávaného vzduchu – porucha",
+    "P0100": "Merač vzduchu (MAF) – porucha obvodu",
+    "P0101": "Merač vzduchu (MAF) – nepravdepodobná hodnota",
+    "P0120": "Snímač polohy škrtiacej klapky – porucha",
+    "P0505": "Regulácia voľnobehu (ICV) – porucha",
+    "P0506": "Voľnobeh nižší ako požadovaný",
+    "P0507": "Voľnobeh vyšší ako požadovaný (falošný vzduch?)",
+    "P0130": "Lambda sonda banka 1 – porucha",
+    "P0133": "Lambda sonda banka 1 – pomalá reakcia",
+    "P0150": "Lambda sonda banka 2 – porucha",
+    "P0153": "Lambda sonda banka 2 – pomalá reakcia",
+    "P0010": "VANOS sania – porucha obvodu",
+    "P0011": "VANOS sania – poloha mimo požadovanej",
+    "P0012": "VANOS sania – oneskorená poloha",
+    "P0014": "VANOS výfuku – poloha mimo požadovanej",
+}
+
+
+def decode_dtc(two: bytes) -> str:
+    """2 bajty -> kód ako P0171."""
+    letter = "PCBU"[two[0] >> 6]
+    return f"{letter}{(two[0] >> 4) & 0x3}{two[0] & 0xF:X}{two[1]:02X}"
+
+
+def describe_dtc(code: str) -> str:
+    return DTC_INFO.get(code, "popis nepoznáme – vyhľadaj na internete")
 
 ERRORS = ("NO DATA", "UNABLE TO CONNECT", "ERROR", "STOPPED", "?", "CAN ERROR")
 
@@ -135,6 +185,30 @@ class Elm327:
                 break
             base += 0x20
         return supported
+
+    def read_dtcs(self, pending: bool = False) -> list[str]:
+        """Prečíta chybové kódy (mód 03 = uložené, 07 = čakajúce). Nič nemaže."""
+        mode = "07" if pending else "03"
+        resp = self._send(mode, timeout=5)
+        if any(resp.upper().startswith(e) for e in ERRORS):
+            return []
+        want = "47" if pending else "43"
+        codes: list[str] = []
+        for line in resp.split("\r"):
+            hexline = line.replace(" ", "").upper()
+            if not hexline.startswith(want):
+                continue
+            try:
+                data = bytes.fromhex(hexline[2:])
+            except ValueError:
+                continue
+            # K-line (ISO 9141) posiela po 3 kódy v riadku, prázdne miesta sú 0000
+            for i in range(0, len(data) - 1, 2):
+                if data[i] or data[i + 1]:
+                    code = decode_dtc(data[i:i + 2])
+                    if code not in codes:
+                        codes.append(code)
+        return codes
 
     def voltage(self) -> float | None:
         m = re.search(r"(\d+(?:\.\d+)?)\s*V", self._send("ATRV"))
@@ -206,6 +280,10 @@ class ObdSource(DataSource):
             if v is not None:
                 self._last["battery_v"] = v
         return dict(self._last)
+
+    def dtcs(self) -> tuple[list[str], list[str]]:
+        """(uložené, čakajúce) chybové kódy."""
+        return self.elm.read_dtcs(), self.elm.read_dtcs(pending=True)
 
     def close(self) -> None:
         self.elm.port.close()

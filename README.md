@@ -31,7 +31,9 @@ Appka s autom len číta, nič nemaže ani nemení.
 ## Simulácia a grafy (bez auta)
 
 ```
-python scripts\simulate.py            # nahrá simulovaný štart s trasením
-python scripts\simulate.py --healthy  # nahrá zdravé auto na porovnanie
+python scripts\simulate.py                       # simulovaný štart s výpadkami na valci 3
+python scripts\simulate.py --list                # zoznam simulovaných porúch
+python scripts\simulate.py --fault vacuum_leak --seconds 300   # iná porucha
+python scripts\simulate.py --healthy             # zdravé auto na porovnanie
 streamlit run app\dashboard.py        # otvorí grafy v prehliadači
 ```

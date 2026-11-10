@@ -17,8 +17,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from brutology.analysis import analyze, print_findings
 from brutology.fake_elm import FakeElm327
-from brutology.obd import PIDS, Elm327, ObdError, ObdSource
+from brutology.obd import PIDS, Elm327, ObdError, ObdSource, describe_dtc
 from brutology.recorder import record
+from brutology.sources import FAULTS, SimulatedCar
 from brutology.storage import Storage
 
 SHOW = ("rpm", "coolant_temp_c", "stft_pct", "stft_b2_pct", "battery_v")
@@ -29,6 +30,8 @@ def main() -> None:
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--port", help="COM port kábla, napr. COM3")
     ap.add_argument("--fake", action="store_true", help="falošný kábel, bez auta")
+    ap.add_argument("--fault", choices=list(FAULTS), default="misfire",
+                    help="porucha falošného auta pri --fake")
     ap.add_argument("--check", action="store_true", help="len over spojenie, nenahrávaj")
     ap.add_argument("--seconds", type=float, default=600, help="max. dĺžka (predvolene 10 min)")
     ap.add_argument("--note", default="", help="poznámka k relácii")
@@ -38,7 +41,7 @@ def main() -> None:
 
     print("Pripájam sa ku káblu..." if not args.fake else "Falošný kábel (bez auta)...")
     try:
-        source = (ObdSource(Elm327(FakeElm327())) if args.fake
+        source = (ObdSource(Elm327(FakeElm327(SimulatedCar(args.fault)))) if args.fake
                   else ObdSource.from_port(args.port))
     except (ObdError, OSError) as e:
         print(f"CHYBA: {e}")
@@ -49,6 +52,13 @@ def main() -> None:
     print(f"Protokol: {source.protocol}")
     print(f"Auto pozná {len(source.supported)} hodnôt, nahrávať budeme: "
           f"{', '.join(names[p.pid] for p in source.pids)}")
+
+    stored, pending = source.dtcs()
+    print("\nChybové kódy v DME (len čítame, nič nemažeme):")
+    for title, codes in (("uložené", stored), ("čakajúce", pending)):
+        print(f"  {title}: {'žiadne' if not codes else ''}")
+        for c in codes:
+            print(f"    {c}  {describe_dtc(c)}")
 
     if args.check:
         print("\nSkúšobné čítanie:")

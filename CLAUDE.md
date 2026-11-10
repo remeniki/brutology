@@ -34,14 +34,16 @@ Ivan je úplný začiatočník v programovaní a vibe codingu, hovorí po sloven
   `analysis.py` (anomálie), `obd.py` (ELM327/OBD-II, povolené len čítacie príkazy),
   `fake_elm.py` (falošný ELM327 na testy)
 - `app/dashboard.py` - grafy (`streamlit run app/dashboard.py`, alebo `start.bat`)
-- `scripts/` - `simulate.py` (nahrá simulovaný štart), `list_ports.py` (nájde COM port kábla),
+- `scripts/` - `simulate.py` (simulovaný štart, `--fault`, `--list`), `list_ports.py` (COM port),
   `record_obd.py` (nahrávanie z auta cez ELM327, `--check`, `--fake`)
 - `tests/` - spustenie: `python -m unittest discover -s tests`
 - `docs/PLAN.md` - plán a stav fáz, **aktualizuj ho po dokončení fázy**
 - `data/logs/` - namerané dáta, nie sú v Gite
 
 ## Architektúra
-Každý zdroj dát dedí z `DataSource` a vracia `{názov_veličiny: hodnota}`. Existuje
+Každý zdroj dát dedí z `DataSource` a vracia `{názov_veličiny: hodnota}`; katalóg
+názvov je v hlavičke `sources.py`. Analýza preskočí kontroly, ktorých veličiny chýbajú,
+a každý nález odkazuje na možné príčiny (`CAUSES`), z ktorých `rank_causes` robí rebríček. Existuje
 `SimulatedCar` a `ObdSource` (OBD-II cez ELM327); pribudne `Ds2Source` (BMW DS2). Ukladanie,
 grafy ani analýza sa pri pridaní nového zdroja nesmú meniť.
 

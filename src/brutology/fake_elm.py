@@ -8,11 +8,22 @@ import time
 
 from .sources import SimulatedCar
 
-# PIDy, ktoré "pozná" simulované auto (MS43 nemá MAP snímač, ale pre test ho dáme)
-SUPPORTED = {0x04, 0x05, 0x06, 0x07, 0x0B, 0x0C, 0x0F, 0x11}
+# PIDy, ktoré "pozná" simulované auto. MS43 meria vzduch MAF-om, MAP snímač nemá
+# (presný zoznam zistíme až na aute).
+SUPPORTED = {0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0C, 0x0E, 0x0F, 0x10, 0x11,
+             0x14, 0x18, 0x1F}
+
+# Chybové kódy, ktoré by poruchy simulátora uložili do DME
+FAULT_DTCS = {"misfire": ["P0303"], "vacuum_leak": ["P0174"], "thermostat": ["P0128"],
+              "o2_sensor": ["P0133"], "vanos": ["P0012"]}
 
 
-def _encode(pid: int, v: dict) -> bytes | None:
+def _dtc_bytes(code: str) -> str:
+    first = ("PCBU".index(code[0]) << 6) | (int(code[1]) << 4) | int(code[2], 16)
+    return f"{first:02X}{code[3:]}"
+
+
+def _encode(pid: int, v: dict, t: float) -> bytes | None:
     """Hodnoty zo simulátora -> bajty presne ako ich posiela auto."""
     trim = lambda pct: bytes([max(0, min(255, round(pct * 128 / 100 + 128)))])
     if pid == 0x0C:
@@ -29,9 +40,25 @@ def _encode(pid: int, v: dict) -> bytes | None:
     if pid == 0x06:
         return trim(v["stft_pct"])
     if pid == 0x07:
-        return trim(0.0)
+        return trim(v["ltft_pct"])
+    if pid == 0x08:
+        return trim(v["stft_b2_pct"])
+    if pid == 0x09:
+        return trim(v["ltft_b2_pct"])
     if pid == 0x04:
         return bytes([60])
+    if pid == 0x03:
+        return bytes([2 if v["closed_loop"] else 1, 0])
+    if pid == 0x0E:
+        return bytes([round((v["timing_adv_deg"] + 64) * 2)])
+    if pid == 0x10:
+        raw = round(v["maf_gs"] * 100)
+        return bytes([raw // 256, raw % 256])
+    if pid in (0x14, 0x18):
+        volts = v["o2_b1s1_v"] if pid == 0x14 else v["o2_b2s1_v"]
+        return bytes([max(0, min(255, round(volts * 200))), 0xFF])
+    if pid == 0x1F:
+        return bytes([int(t) // 256, int(t) % 256])
     return None
 
 
@@ -91,7 +118,15 @@ class FakeElm327:
                 bits = sum(1 << (32 - p) for p in SUPPORTED)
                 self._reply(cmd, prefix + f"4100{bits:08X}")
                 return
-            data = _encode(pid, self.car.read(self.clock())) if pid in SUPPORTED else None
+            now = self.clock()
+            data = _encode(pid, self.car.read(now), now) if pid in SUPPORTED else None
             self._reply(cmd, prefix + (f"41{pid:02X}{data.hex().upper()}" if data else "NO DATA"))
+        elif cmd in ("03", "07"):
+            codes = FAULT_DTCS.get(self.car.fault, []) if cmd == "03" else []
+            body = "".join(_dtc_bytes(c) for c in codes)
+            # K-line: 3 kódy na riadok, doplnené nulami
+            body = body.ljust(max(12, -(-len(body) // 12) * 12), "0")
+            head = "43" if cmd == "03" else "47"
+            self._reply(cmd, "\r".join(head + body[i:i + 12] for i in range(0, len(body), 12)))
         else:
             self._reply(cmd, "?")

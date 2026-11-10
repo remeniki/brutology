@@ -6,7 +6,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from brutology.analysis import analyze
 from brutology.fake_elm import FakeElm327
-from brutology.obd import Elm327, ObdSource, READ_ONLY, ALLOWED_AT
+from brutology.obd import ALLOWED_AT, READ_ONLY, Elm327, ObdSource, decode_dtc
 from brutology.recorder import record
 from brutology.sources import DataSource, SimulatedCar
 from brutology.storage import Storage
@@ -32,7 +32,8 @@ class ObdTests(unittest.TestCase):
         self.assertIn("ISO 9141-2", src.protocol)
         names = {p.name for p in src.pids}
         self.assertIn("rpm", names)
-        self.assertNotIn("maf_gs", names)   # simulované auto ho nepozná
+        self.assertIn("maf_gs", names)
+        self.assertNotIn("map_kpa", names)   # MS43 nemá MAP snímač
 
     def test_decoding(self):
         elm = Elm327(FakeElm327())
@@ -48,7 +49,7 @@ class ObdTests(unittest.TestCase):
     def test_no_data_returns_none(self):
         elm = Elm327(FakeElm327())
         elm.setup()
-        self.assertIsNone(elm.query(0x10))   # MAF simulované auto nemá
+        self.assertIsNone(elm.query(0x0B))   # MAP simulované auto nemá
 
     def test_values_are_realistic(self):
         values = ObdSource(Elm327(FakeElm327())).read(0)
@@ -58,7 +59,7 @@ class ObdTests(unittest.TestCase):
 
     def test_read_only_guard(self):
         elm = Elm327(FakeElm327())
-        for forbidden in ("04", "03", "0902", "ATSH7E0", "1001", "2E0101", "ATMA"):
+        for forbidden in ("04", "0902", "ATSH7E0", "1001", "2E0101", "ATMA", "0300"):
             with self.assertRaises(PermissionError, msg=forbidden):
                 elm._send(forbidden)
 
@@ -87,6 +88,36 @@ class ObdTests(unittest.TestCase):
         self.assertTrue(3 <= len(times) <= 6, times)
         self.assertEqual(times, sorted(times))
         self.assertLess(times[-1], 0.5)
+
+    def test_decode_dtc(self):
+        self.assertEqual(decode_dtc(bytes([0x01, 0x71])), "P0171")
+        self.assertEqual(decode_dtc(bytes([0x03, 0x03])), "P0303")
+        self.assertEqual(decode_dtc(bytes([0x41, 0x00])), "C0100")
+
+    def test_read_dtcs(self):
+        self.assertEqual(ObdSource(Elm327(FakeElm327(SimulatedCar("misfire")))).dtcs(),
+                         (["P0303"], []))
+        self.assertEqual(ObdSource(Elm327(FakeElm327(SimulatedCar(None)))).dtcs(), ([], []))
+
+    def test_dtcs_multiple_lines(self):
+        elm = Elm327(FakeElm327())
+        elm.port._handle = lambda cmd: elm.port._reply(
+            cmd, "43017101740300\r43010000000000")
+        self.assertEqual(elm.read_dtcs(), ["P0171", "P0174", "P0300", "P0100"])
+
+    def test_new_signals_through_obd(self):
+        values = ObdSource(Elm327(FakeElm327())).read(0)
+        for name in ("maf_gs", "closed_loop", "o2_b1s1_v", "stft_b2_pct", "timing_adv_deg"):
+            self.assertIn(name, values)
+
+    def test_vacuum_leak_through_obd(self):
+        """Falošný vzduch musí byť vidno aj cez obyčajný ELM327 (bez DS2)."""
+        from brutology.analysis import rank_causes
+        st = Storage(":memory:")
+        src = Clocked(fault=False)
+        src.fake.car = SimulatedCar("vacuum_leak")
+        sid = record(src, st, duration=300, hz=5)
+        self.assertEqual(rank_causes(analyze(st.dataframe(sid)))[0].key, "vacuum_leak")
 
 
 if __name__ == "__main__":

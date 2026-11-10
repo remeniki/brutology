@@ -10,7 +10,7 @@ import plotly.graph_objects as go
 import streamlit as st
 from plotly.subplots import make_subplots
 
-from brutology.analysis import analyze
+from brutology.analysis import NO_FINDINGS_HINT, analyze, rank_causes
 from brutology.storage import DEFAULT_DB, Storage
 
 SEVERITY_ICON = {"vysoká": "🔴", "stredná": "🟠", "nízka": "🟡"}
@@ -58,10 +58,18 @@ smooth = st.sidebar.slider("Vyhladenie (počet vzoriek)", 1, 50, 1)
 c1, c2, c3 = st.columns(3)
 c1.metric("Trvanie", f"{df.index.max():.0f} s")
 c2.metric("Vzoriek na veličinu", len(df))
-if "misfire_cyl3" in df:
-    c3.metric("Výpadky zapaľovania (valec 3)", int(df["misfire_cyl3"].sum()))
+misfire_cols = [c for c in df.columns if c.startswith("misfire_cyl")]
+if misfire_cols:
+    c3.metric("Výpadky zapaľovania (všetky valce)", int(df[misfire_cols].sum().sum()))
 
 findings = analyze(df)
+suspects = rank_causes(findings)
+if suspects:
+    st.subheader("Najpravdepodobnejšie príčiny")
+    for i, s in enumerate(suspects[:5], 1):
+        with st.expander(f"{i}. {s.name}  ·  skóre {s.score:.1f}", expanded=i == 1):
+            st.markdown(f"**Prečo:** {', '.join(s.evidence)}  \n**Čo urobiť:** {s.tip}")
+
 st.subheader("Nálezy")
 if findings:
     for f in findings:
@@ -71,6 +79,7 @@ if findings:
                "odhady – doladíme ich na reálnych dátach z auta.")
 else:
     st.success("Žiadne anomálie nenájdené.")
+    st.caption(NO_FINDINGS_HINT)
 
 if signals:
     fig = make_subplots(rows=len(signals), cols=1, shared_xaxes=True,
