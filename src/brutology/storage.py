@@ -55,6 +55,16 @@ class Storage:
             (session_id, name),
         ).fetchall()
 
+    def dataframe(self, session_id: int):
+        """Celá relácia ako tabuľka: riadok = čas, stĺpec = veličina."""
+        import pandas as pd
+
+        rows = self.db.execute(
+            "SELECT t, name, value FROM samples WHERE session_id=?", (session_id,)
+        ).fetchall()
+        df = pd.DataFrame(rows, columns=["t", "name", "value"])
+        return df.pivot_table(index="t", columns="name", values="value").sort_index()
+
     def close(self) -> None:
         self.db.commit()
         self.db.close()

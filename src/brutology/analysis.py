@@ -101,6 +101,16 @@ def _check_unsteady(df, findings, signal, limit, unit, title, why, severity):
             signal, a, b, _coolant_at(df, a)))
 
 
+def print_findings(findings: list[Finding]) -> None:
+    """Vypíše nálezy do konzoly."""
+    print(f"\nNálezy ({len(findings)}):")
+    for f in findings:
+        print(f"  [{f.severity}] {f.title}  ({f.when()})")
+        print(f"      {f.detail}")
+    if not findings:
+        print("  žiadne anomálie")
+
+
 def analyze(df: pd.DataFrame) -> list[Finding]:
     """Prejde reláciu a vráti zoznam nálezov, najvážnejšie prvé."""
     findings: list[Finding] = []

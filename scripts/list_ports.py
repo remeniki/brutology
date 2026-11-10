@@ -1,4 +1,4 @@
-"""Vypíše všetky sériové (COM) porty. Slúži na nájdenie K+DCAN kábla."""
+"""Vypíše všetky sériové (COM) porty. Slúži na nájdenie kábla (K+DCAN alebo ELM327)."""
 from serial.tools import list_ports
 
 

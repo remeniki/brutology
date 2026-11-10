@@ -8,9 +8,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-import pandas as pd
-
-from brutology.analysis import analyze
+from brutology.analysis import analyze, print_findings
 from brutology.recorder import record
 from brutology.sources import SimulatedCar
 from brutology.storage import Storage
@@ -31,17 +29,7 @@ def main() -> None:
         vals = [v for _, v in storage.series(sid, name)]
         print(f"  {name:16s} min={min(vals):8.1f}  max={max(vals):8.1f}  vzoriek={len(vals)}")
 
-    rows = storage.db.execute(
-        "SELECT t, name, value FROM samples WHERE session_id=?", (sid,)).fetchall()
-    df = pd.DataFrame(rows, columns=["t", "name", "value"]).pivot_table(
-        index="t", columns="name", values="value")
-    findings = analyze(df)
-    print(f"\nNalezy ({len(findings)}):")
-    for f in findings:
-        print(f"  [{f.severity}] {f.title}  ({f.when()})")
-        print(f"      {f.detail}")
-    if not findings:
-        print("  ziadne anomalie")
+    print_findings(analyze(storage.dataframe(sid)))
     storage.close()
 
 

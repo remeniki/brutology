@@ -13,7 +13,9 @@ otáčok, fuel trimy, výpadky zapaľovania po valcoch, VANOS, voľnobeh...).
 - Kábel: K+DCAN (USB sériový prevodník, hádam FTDI), na E46 musí byť v režime **K-line**
 - Generické OBD-II dá len emisné dáta; BMW-špecifické dáta (zapaľovanie po valcoch,
   VANOS, voľnobeh) idú cez protokol **DS2** a ten je takmer nezdokumentovaný
-- Kábel k autu ešte nebol pripojený; zatiaľ sa vyvíja so simulátorom
+- Kábel 2: ELM327 USB (lacná kópia) - len generické OBD-II; s autom funguje cez
+  ScanMaster-ELM (fuel trimy), s ISTA nie. Appka ho číta cez `obd.py`
+- Appka sa k autu ešte nepripojila; zatiaľ sa vyvíja so simulátorom a falošným ELM327
 
 ## Používateľ
 Ivan je úplný začiatočník v programovaní a vibe codingu, hovorí po slovensky.
@@ -28,16 +30,19 @@ Ivan je úplný začiatočník v programovaní a vibe codingu, hovorí po sloven
 - Prostredie: Windows, virtuálne prostredie `.venv` (`setup.bat` ho vytvorí)
 
 ## Štruktúra
-- `src/brutology/` - jadro: `sources.py` (zdroje dát), `storage.py` (SQLite), `recorder.py`
+- `src/brutology/` - jadro: `sources.py` (zdroje dát), `storage.py` (SQLite), `recorder.py`,
+  `analysis.py` (anomálie), `obd.py` (ELM327/OBD-II, povolené len čítacie príkazy),
+  `fake_elm.py` (falošný ELM327 na testy)
 - `app/dashboard.py` - grafy (`streamlit run app/dashboard.py`, alebo `start.bat`)
-- `scripts/` - `simulate.py` (nahrá simulovaný štart), `list_ports.py` (nájde COM port kábla)
+- `scripts/` - `simulate.py` (nahrá simulovaný štart), `list_ports.py` (nájde COM port kábla),
+  `record_obd.py` (nahrávanie z auta cez ELM327, `--check`, `--fake`)
 - `tests/` - spustenie: `python -m unittest discover -s tests`
 - `docs/PLAN.md` - plán a stav fáz, **aktualizuj ho po dokončení fázy**
 - `data/logs/` - namerané dáta, nie sú v Gite
 
 ## Architektúra
 Každý zdroj dát dedí z `DataSource` a vracia `{názov_veličiny: hodnota}`. Existuje
-`SimulatedCar`; pribudnú `ObdSource` (OBD-II) a `Ds2Source` (BMW DS2). Ukladanie,
+`SimulatedCar` a `ObdSource` (OBD-II cez ELM327); pribudne `Ds2Source` (BMW DS2). Ukladanie,
 grafy ani analýza sa pri pridaní nového zdroja nesmú meniť.
 
 ## Zásady
