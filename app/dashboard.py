@@ -11,6 +11,7 @@ import streamlit as st
 from plotly.subplots import make_subplots
 
 from brutology.analysis import NO_FINDINGS_HINT, analyze, rank_causes
+from brutology.signals import GLOSSARY, describe, label
 from brutology.storage import DEFAULT_DB, Storage
 
 SEVERITY_ICON = {"vysoká": "🔴", "stredná": "🟠", "nízka": "🟡"}
@@ -18,21 +19,6 @@ SEVERITY_COLOR = {"vysoká": "red", "stredná": "orange", "nízka": "gold"}
 PALETTE = ["#1f77b4", "#d62728", "#2ca02c", "#9467bd", "#ff7f0e", "#17becf", "#8c564b",
            "#e377c2"]
 
-# jednotka podľa konca názvu veličiny (katalóg názvov je v sources.py)
-UNITS = {"rpm": "ot/min", "_pct": "%", "_c": "°C", "_v": "V", "_kpa": "kPa",
-         "_gs": "g/s", "_deg": "°", "_s": "s"}
-
-
-def unit(name: str) -> str:
-    for suffix, u in UNITS.items():
-        if name == suffix or name.endswith(suffix):
-            return u
-    return ""
-
-
-def label(name: str) -> str:
-    u = unit(name)
-    return f"{name} [{u}]" if u else name
 
 st.set_page_config(page_title="Brutology", layout="wide")
 st.title("Brutology - Brutus E46 330i")
@@ -70,6 +56,8 @@ df = load(sid, mtime)
 signals = st.sidebar.multiselect(
     "Veličiny", list(df.columns),
     default=[c for c in ("rpm", "coolant_temp_c", "stft_pct") if c in df.columns],
+    format_func=lambda n: f"{describe(n).title} ({n})",
+    help="Čo ktorá veličina znamená, nájdeš v slovníku dole na stránke.",
 )
 view = st.sidebar.segmented_control(
     "Zobrazenie", ["Pod sebou", "Cez seba (vlastné osi)", "Cez seba (0–100 %)"],
@@ -125,7 +113,7 @@ elif view == "Pod sebou":
     fig = make_subplots(rows=len(signals), cols=1, shared_xaxes=True,
                         subplot_titles=[label(s) for s in signals], vertical_spacing=0.06)
     for i, name in enumerate(signals, start=1):
-        fig.add_trace(go.Scatter(x=df.index, y=series(name), name=name, mode="lines"),
+        fig.add_trace(go.Scatter(x=df.index, y=series(name), name=label(name), mode="lines"),
                       row=i, col=1)
         add_bands(fig, [name], row=i, col=1)
     fig.update_xaxes(title_text=X_TITLE, row=len(signals), col=1)
@@ -141,7 +129,8 @@ else:
     for i, name in enumerate(signals):
         color = PALETTE[i % len(PALETTE)]
         y = series(name)
-        hover = f"<b>{name}</b><br>%{{customdata:.2f}} {unit(name)}<br>t = %{{x:.1f}} s<extra></extra>"
+        hover = (f"<b>{describe(name).title}</b><br>%{{customdata:.2f}} {describe(name).unit}"
+                 f"<br>t = %{{x:.1f}} s<extra></extra>")
         if normalized:
             lo, hi = y.min(), y.max()
             y_plot = (y - lo) / (hi - lo) * 100 if hi > lo else y * 0 + 50
@@ -171,6 +160,26 @@ else:
     if normalized:
         st.caption("Každá veličina je roztiahnutá na celú výšku grafu, aby bolo vidno, "
                    "kedy sa čo deje naraz. Skutočné hodnoty uvidíš, keď prejdeš myšou nad graf.")
+
+if signals:
+    with st.container(border=True):
+        st.markdown("**Čo znamenajú vybrané veličiny**")
+        for name in signals:
+            d = describe(name)
+            st.markdown(f"**{label(name)}** · `{name}`")
+            st.caption(d.text or "Popis zatiaľ chýba.")
+
+st.subheader("Slovník")
+tab_signals, tab_terms = st.tabs(["Veličiny v tejto relácii", "Pojmy a skratky"])
+with tab_signals:
+    st.dataframe(
+        pd.DataFrame([{"Skratka": n, "Názov": describe(n).title, "Jednotka": describe(n).unit,
+                       "Čo to znamená": describe(n).text} for n in df.columns]),
+        hide_index=True, width="stretch",
+        column_config={"Čo to znamená": st.column_config.TextColumn(width="large")})
+with tab_terms:
+    for term, text in GLOSSARY.items():
+        st.markdown(f"**{term}** – {text}")
 
 with st.expander("Surové dáta"):
     st.dataframe(df)

@@ -32,7 +32,8 @@ Ivan je úplný začiatočník v programovaní a vibe codingu, hovorí po sloven
 ## Štruktúra
 - `src/brutology/` - jadro: `sources.py` (zdroje dát), `storage.py` (SQLite), `recorder.py`,
   `analysis.py` (anomálie), `obd.py` (ELM327/OBD-II, povolené len čítacie príkazy),
-  `fake_elm.py` (falošný ELM327 na testy)
+  `fake_elm.py` (falošný ELM327 na testy), `signals.py` (slovník: názov, jednotka a
+  vysvetlenie každej veličiny + pojmy; nová veličina musí mať popis, stráži to test)
 - `app/dashboard.py` - grafy (`streamlit run app/dashboard.py`, alebo `start.bat`)
 - `scripts/` - `simulate.py` (simulovaný štart, `--fault`, `--list`), `list_ports.py` (COM port),
   `record_obd.py` (nahrávanie z auta cez ELM327, `--check`, `--fake`)
