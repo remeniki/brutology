@@ -15,3 +15,11 @@ python scripts\list_ports.py
 ```
 
 Plán a postup: pozri `docs/PLAN.md`.
+
+## Simulácia a grafy (bez auta)
+
+```
+python scripts\simulate.py            # nahrá simulovaný štart s trasením
+python scripts\simulate.py --healthy  # nahrá zdravé auto na porovnanie
+streamlit run app\dashboard.py        # otvorí grafy v prehliadači
+```
