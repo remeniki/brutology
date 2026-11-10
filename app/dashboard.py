@@ -10,7 +10,11 @@ import plotly.graph_objects as go
 import streamlit as st
 from plotly.subplots import make_subplots
 
+from brutology.analysis import analyze
 from brutology.storage import DEFAULT_DB, Storage
+
+SEVERITY_ICON = {"vysoká": "🔴", "stredná": "🟠", "nízka": "🟡"}
+SEVERITY_COLOR = {"vysoká": "red", "stredná": "orange", "nízka": "gold"}
 
 st.set_page_config(page_title="Brutology", layout="wide")
 st.title("Brutology - Brutus E46 330i")
@@ -57,16 +61,32 @@ c2.metric("Vzoriek na veličinu", len(df))
 if "misfire_cyl3" in df:
     c3.metric("Výpadky zapaľovania (valec 3)", int(df["misfire_cyl3"].sum()))
 
+findings = analyze(df)
+st.subheader("Nálezy")
+if findings:
+    for f in findings:
+        icon = SEVERITY_ICON.get(f.severity, "⚪")
+        st.markdown(f"{icon} **{f.title}** · {f.when()}  \n{f.detail}")
+    st.caption("Nálezy sú v grafoch vyznačené farebným pásom. Prahy sú zatiaľ "
+               "odhady – doladíme ich na reálnych dátach z auta.")
+else:
+    st.success("Žiadne anomálie nenájdené.")
+
 if signals:
     fig = make_subplots(rows=len(signals), cols=1, shared_xaxes=True,
                         subplot_titles=signals, vertical_spacing=0.06)
     for i, name in enumerate(signals, start=1):
         y = df[name].rolling(smooth, min_periods=1).mean() if smooth > 1 else df[name]
         fig.add_trace(go.Scatter(x=df.index, y=y, name=name, mode="lines"), row=i, col=1)
+        for f in findings:
+            if f.signal == name:
+                fig.add_vrect(x0=f.t_start, x1=max(f.t_end, f.t_start + 0.5),
+                              fillcolor=SEVERITY_COLOR.get(f.severity, "gray"),
+                              opacity=0.15, line_width=0, row=i, col=1)
     fig.update_xaxes(title_text="čas od začiatku nahrávania [s]", row=len(signals), col=1)
     fig.update_layout(height=260 * len(signals), showlegend=False,
                       margin=dict(l=10, r=10, t=40, b=10))
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
 else:
     st.write("Vyber aspoň jednu veličinu v ľavom paneli.")
 

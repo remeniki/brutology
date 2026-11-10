@@ -5,7 +5,9 @@
 - [ ] Fáza 2: Prvé spojenie s autom, výpis živých dát do konzoly
 - [x] Fáza 3 (simulácia): Ukladanie do SQLite, nahrávanie relácie, simulátor studeného štartu
 - [x] Fáza 4 (základ): Grafy relácií (app/dashboard.py)
-- [ ] Fáza 5: Analýza anomálií pri studenom štarte
+- [x] Fáza 5 (základ): Analýza anomálií pri studenom štarte (src/brutology/analysis.py)
+      - hotové: výpadky po valcoch, kolísanie otáčok a MAP, fuel trim, napätie
+      - zostáva: doladiť prahy na reálnych dátach, VANOS a voľnobeh (po DS2), porovnanie relácií
 - [ ] Fáza 6: BMW DS2 protokol (dáta špecifické pre MS43)
 - [ ] Fáza 7: Telefón
 
