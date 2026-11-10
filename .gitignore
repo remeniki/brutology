@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Editor
+.vscode/
+.idea/
+
+# Namerane data (velke, osobne) - necommitujeme
+data/logs/*
+!data/logs/.gitkeep
+*.sqlite
+*.db
+
+# OS
+Thumbs.db
+.DS_Store
